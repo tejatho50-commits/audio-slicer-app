@@ -1,0 +1,78 @@
+import streamlit as st
+from pydub import AudioSegment
+import io
+import zipfile
+
+st.set_page_config(page_title="Free Audio Segmenter", page_icon="🎵")
+
+st.title("🎵 Free AI Audio Segmenter")
+st.markdown("""
+**Upload your audio file below.** The AI will automatically generate:
+1. The **First 30 Seconds**
+2. The **Second 30 Seconds**
+3. **All Segments** (The full audio cut into 30s clips)
+""")
+
+def get_audio_bytes(audio_segment, format="mp3"):
+    buffer = io.BytesIO()
+    audio_segment.export(buffer, format=format)
+    return buffer.getvalue()
+
+uploaded_file = st.file_uploader("Choose an audio file (MP3 or WAV)", type=["mp3", "wav"])
+
+if uploaded_file is not None:
+    st.audio(uploaded_file, format='audio/mp3')
+    st.info("Processing audio... please wait.")
+
+    try:
+        audio = AudioSegment.from_file(uploaded_file)
+        duration_ms = len(audio)
+        THIRTY_SECONDS = 30 * 1000
+
+        st.subheader("1. First 30 Seconds")
+        if duration_ms > 0:
+            first_30 = audio[:THIRTY_SECONDS]
+            st.download_button(
+                label="⬇️ Download First 30s",
+                data=get_audio_bytes(first_30),
+                file_name="segment_00_30.mp3",
+                mime="audio/mpeg"
+            )
+
+        st.subheader("2. Second 30 Seconds")
+        if duration_ms >= THIRTY_SECONDS:
+            end_point = min(duration_ms, THIRTY_SECONDS * 2)
+            second_30 = audio[THIRTY_SECONDS:end_point]
+            st.download_button(
+                label="⬇️ Download Second 30s",
+                data=get_audio_bytes(second_30),
+                file_name="segment_30_60.mp3",
+                mime="audio/mpeg"
+            )
+        else:
+            st.warning("Audio is shorter than 30 seconds.")
+
+        st.subheader("3. All Segments (ZIP)")
+        st.write("Download the entire audio sliced into 30-second chunks.")
+        
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            chunk_index = 1
+            for i in range(0, duration_ms, THIRTY_SECONDS):
+                chunk = audio[i:i + THIRTY_SECONDS]
+                chunk_name = f"part_{chunk_index}_start_{i//1000}s.mp3"
+                chunk_data = io.BytesIO()
+                chunk.export(chunk_data, format="mp3")
+                zf.writestr(chunk_name, chunk_data.getvalue())
+                chunk_index += 1
+        
+        st.download_button(
+            label="⬇️ Download All Segments (.ZIP)",
+            data=zip_buffer.getvalue(),
+            file_name="all_segments.zip",
+            mime="application/zip"
+        )
+        st.success("✅ Processing Complete!")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
